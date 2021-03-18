@@ -1833,11 +1833,7 @@ AudioClock::on_motion_notify_event (GdkEventMotion *ev)
 		timepos_t pos = current_time ();
 		timepos_t step = get_incremental_step (drag_field, pos);
 
-		cerr << "step " << step;
-
 		step *= fabs (drag_accum);
-
-		cerr << " via DA " << drag_accum << " actual " << step << endl;
 
 		if (drag_accum > 0) { /* positive, so downward motion ... decrement clock */
 
