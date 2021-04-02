@@ -67,6 +67,7 @@
 #include "ardour/internal_send.h"
 #include "ardour/meter.h"
 #include "ardour/delayline.h"
+#include "ardour/dsp_limiter.h"
 #include "ardour/midi_buffer.h"
 #include "ardour/midi_port.h"
 #include "ardour/midi_track.h"
@@ -256,6 +257,7 @@ Route::init ()
 	}
 
 	_main_outs.reset (new Delivery (_session, _output, _pannable, _mute_master, _name, Delivery::Main));
+	_main_outs->set_owner (this);
 	/* master outut volume */
 	if (is_master()) {
 		_volume_control.reset (new GainControl (_session, MainOutVolume));
@@ -4620,6 +4622,12 @@ Route::phase_control() const
 	return _phase_control;
 }
 
+boost::shared_ptr<Limiter>
+Route::main_out_limiter() const
+{
+	return _main_outs ? _main_outs->limiter() : boost::shared_ptr<Limiter>();
+}
+
 boost::shared_ptr<AutomationControl>
 Route::get_control (const Evoral::Parameter& param)
 {
@@ -5750,6 +5758,9 @@ Route::master_limiter_enable_controllable () const
 		return boost::dynamic_pointer_cast<ARDOUR::AutomationControl> (_ch_post->control (Evoral::Parameter (ARDOUR::PluginAutomation, 0, 1)));
 	}
 #endif
+	if (main_out_limiter ()) {
+		return main_out_limiter ()->enable_ctrl ();
+	}
 	return boost::shared_ptr<AutomationControl>();
 }
 
@@ -5761,6 +5772,9 @@ Route::master_limiter_mtr_controllable () const
 		return _ch_post->control_output (2);
 	}
 #endif
+	if (main_out_limiter ()) {
+		return main_out_limiter ()->redux_ctrl ();
+	}
 	return boost::shared_ptr<ReadOnlyControl>();
 }
 

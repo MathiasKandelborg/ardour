@@ -103,6 +103,7 @@
 #include "ardour/control_protocol_manager.h"
 #include "ardour/directory_names.h"
 #include "ardour/disk_reader.h"
+#include "ardour/dsp_limiter.h"
 #include "ardour/filename_extensions.h"
 #include "ardour/graph.h"
 #include "ardour/location.h"
@@ -4261,7 +4262,9 @@ Session::config_changed (std::string p, bool ours)
 		auto_loop_changed (_locations->auto_loop_location());
 	} else if (p == "use-master-volume") {
 		if (master_volume () && !Config->get_use_master_volume ()) {
+			assert (master_limiter ());
 			master_volume ()->set_value (GAIN_COEFF_UNITY, Controllable::NoGroup);
+			master_limiter ()->enable (false);
 		}
 	}
 
