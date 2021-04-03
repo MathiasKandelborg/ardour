@@ -4261,7 +4261,6 @@ Session::config_changed (std::string p, bool ours)
 		auto_loop_changed (_locations->auto_loop_location());
 	} else if (p == "use-master-volume") {
 		if (master_volume () && !Config->get_use_master_volume ()) {
-			_master_out->set_volume_applies_to_output (true);
 			master_volume ()->set_value (GAIN_COEFF_UNITY, Controllable::NoGroup);
 		}
 	}

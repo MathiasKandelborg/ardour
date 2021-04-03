@@ -123,7 +123,6 @@ Route::Route (Session& sess, string name, PresentationInfo::Flag flag, DataType 
 	, _default_type (default_type)
 	, _instrument_fanned_out (false)
 	, _loop_location (NULL)
-	, _volume_applies_to_output (true)
 	, _track_number (0)
 	, _strict_io (false)
 	, _in_configure_processors (false)
@@ -262,9 +261,6 @@ Route::init ()
 		_volume_control.reset (new GainControl (_session, MainOutVolume));
 		_volume_control->set_flag (Controllable::NotAutomatable);
 		_main_outs->add_gain (_volume_control);
-		_volume.reset (new Amp (_session, X_("LAN Amp"), _volume_control, false));
-		_volume->set_display_to_user (false);
-		_volume->deactivate ();
 	}
 	_main_outs->activate ();
 
@@ -1400,7 +1396,7 @@ Route::clear_processors (Placement p)
 bool
 Route::is_internal_processor (boost::shared_ptr<Processor> p) const
 {
-	if (p == _amp || p == _meter || p == _main_outs || p == _delayline || p == _trim || p == _polarity || (_volume && p == _volume)) {
+	if (p == _amp || p == _meter || p == _main_outs || p == _delayline || p == _trim || p == _polarity) {
 		return true;
 	}
 #ifdef MIXBUS
@@ -2516,10 +2512,6 @@ Route::state (bool save_template)
 	node->set_property (X_("default-type"), _default_type);
 	node->set_property (X_("strict-io"), _strict_io);
 
-	if (is_master ()) {
-		node->set_property (X_("volume-applies-to-output"), _volume_applies_to_output);
-	}
-
 	node->add_child_nocopy (_presentation_info.get_state());
 
 	node->set_property (X_("active"), _active);
@@ -2716,19 +2708,6 @@ Route::set_state (const XMLNode& node, int version)
 	}
 
 	_initial_io_setup = false;
-
-	if (is_master ()) {
-		node.get_property (X_("volume-applies-to-output"), _volume_applies_to_output);
-		if (_volume_applies_to_output) {
-			_volume->deactivate ();
-			_volume->set_display_to_user (false);
-			main_outs()->add_gain (_volume_control);
-		} else {
-			_volume->set_display_to_user (true);
-			_volume->activate ();
-			main_outs()->add_gain (boost::shared_ptr<GainControl> ());
-		}
-	}
 
 	set_processor_state (processor_state, version);
 
@@ -3068,10 +3047,6 @@ Route::set_processor_state (const XMLNode& node, int version)
 		} else if (prop->value() == "trim") {
 			_trim->set_state (**niter, version);
 			new_order.push_back (_trim);
-		} else if (prop->value() == "main-volume") {
-			assert (is_master ());
-			_volume->set_state (**niter, version);
-			new_order.push_back (_volume);
 		} else if (prop->value() == "meter") {
 			_meter->set_state (**niter, version);
 			new_order.push_back (_meter);
@@ -4643,32 +4618,6 @@ boost::shared_ptr<PhaseControl>
 Route::phase_control() const
 {
 	return _phase_control;
-}
-
-void
-Route::set_volume_applies_to_output (bool en)
-{
-	if (!is_master () || _volume_applies_to_output == en) {
-		return;
-	}
-	if (en) {
-		_volume->deactivate ();
-		_volume->set_display_to_user (false);
-		main_outs()->add_gain (_volume_control);
-		{
-			/* remove hidden processor */
-			Glib::Threads::Mutex::Lock lx (AudioEngine::instance()->process_lock ());
-			configure_processors (NULL);
-		}
-		processors_changed (RouteProcessorChange ()); /* EMIT SIGNAL */
-	} else {
-		_volume->set_display_to_user (true);
-		add_processor (_volume, PostFader, NULL, true);
-		_volume->activate ();
-		main_outs()->add_gain (boost::shared_ptr<GainControl> ());
-	}
-	_volume_applies_to_output = en;
-	_session.set_dirty ();
 }
 
 boost::shared_ptr<AutomationControl>
