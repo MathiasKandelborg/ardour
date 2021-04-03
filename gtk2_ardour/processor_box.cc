@@ -2373,15 +2373,6 @@ ProcessorBox::show_processor_menu (int arg)
 		disk_io_action->set_sensitive (false);
 	}
 
-	RefPtr<ToggleAction> volume_pos_action = ActionManager::get_toggle_action (X_("ProcessorMenu"), "custom-volume-pos");
-	if (_route->is_master () && Config->get_use_master_volume ()) {
-		PBD::Unwinder<bool> uw (_ignore_rb_change, true);
-		volume_pos_action->set_sensitive (true);
-		volume_pos_action->set_active (!_route->volume_applies_to_output ());
-	} else {
-		volume_pos_action->set_sensitive (false);
-	}
-
 	/* allow editing with an Ardour-generated UI for plugin inserts with editors */
 	edit_action->set_sensitive (pi && pi->plugin()->has_editor ());
 
@@ -3687,12 +3678,6 @@ ProcessorBox::set_disk_io_position (DiskIOPoint diop)
 }
 
 void
-ProcessorBox::toggle_custom_loudness_pos ()
-{
-	_route->set_volume_applies_to_output (!_route->volume_applies_to_output ());
-}
-
-void
 ProcessorBox::clear_processors ()
 {
 	string prompt;
@@ -3983,9 +3968,6 @@ ProcessorBox::register_actions ()
 	ActionManager::register_toggle_action (processor_box_actions, X_("disk-io-postfader"), _("Post-Fader"), sigc::bind (sigc::ptr_fun (ProcessorBox::rb_set_disk_io_position), DiskIOPostFader));
 	ActionManager::register_toggle_action (processor_box_actions, X_("disk-io-custom"), _("Custom"), sigc::bind (sigc::ptr_fun (ProcessorBox::rb_set_disk_io_position), DiskIOCustom));
 
-	/* Loudness Volume Control */
-	ActionManager::register_toggle_action (processor_box_actions, X_("custom-volume-pos"), _("Custom LAN Amp Position"), sigc::ptr_fun (ProcessorBox::rb_toggle_custom_loudness_pos));
-
 	/* show editors */
 	edit_action = ActionManager::register_action (
 		processor_box_actions, X_("edit"), _("Edit..."),
@@ -4025,15 +4007,6 @@ ProcessorBox::rb_set_disk_io_position (DiskIOPoint diop)
 	}
 
 	_current_processor_box->set_disk_io_position (diop);
-}
-
-void
-ProcessorBox::rb_toggle_custom_loudness_pos ()
-{
-	if (_current_processor_box == 0 || _ignore_rb_change) {
-		return;
-	}
-	_current_processor_box->toggle_custom_loudness_pos ();
 }
 
 void

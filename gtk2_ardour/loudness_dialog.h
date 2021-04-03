@@ -116,7 +116,6 @@ private:
 	ArdourWidgets::ArdourButton _rt_analysis_button;
 	ArdourWidgets::ArdourButton _start_analysis_button;
 	ArdourWidgets::ArdourButton _show_report_button;
-	ArdourWidgets::ArdourButton _custom_pos_button;
 
 	ArdourWidgets::ArdourDropdown _preset_dropdown;
 	std::string                   _initial_preset_name;

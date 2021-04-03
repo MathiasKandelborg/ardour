@@ -94,7 +94,6 @@ LoudnessDialog::LoudnessDialog (Session* s, AudioRange const& ar, bool as)
 	, _rt_analysis_button (_("Realtime"), ArdourButton::led_default_elements, true)
 	, _start_analysis_button (_("Analyze"))
 	, _show_report_button (_("Show Graphical Analysis"))
-	, _custom_pos_button (_("Custom Amplifier Position"), ArdourButton::led_default_elements, true)
 	, _dbfs_adjustment ( 0.00, -90.00, 0.00, 0.1, 0.2)
 	, _dbtp_adjustment ( -1.0, -90.00, 0.00, 0.1, 0.2)
 	, _lufs_i_adjustment (-23.0, -90.00, 0.00, 0.1, 1.0)
@@ -120,9 +119,6 @@ LoudnessDialog::LoudnessDialog (Session* s, AudioRange const& ar, bool as)
 	_start_analysis_button.set_name ("generic button");
 	_rt_analysis_button.set_name ("generic button");
 	_show_report_button.set_name ("generic button");
-	_custom_pos_button.set_name ("generic button");
-
-	_custom_pos_button.set_active (!_session->master_out()->volume_applies_to_output ());
 
 	GtkRequisition req = _start_analysis_button.size_request ();
 	_start_analysis_button.set_size_request (-1, req.height * 1.1);
@@ -143,7 +139,6 @@ LoudnessDialog::LoudnessDialog (Session* s, AudioRange const& ar, bool as)
 	_start_analysis_button.set_can_focus (true);
 	_rt_analysis_button.set_can_focus (true);
 	_show_report_button.set_can_focus (true);
-	_custom_pos_button.set_can_focus (true);
 	_dbfs_btn.set_can_focus (true);
 	_dbtp_btn.set_can_focus (true);
 	_lufs_i_btn.set_can_focus (true);
@@ -238,15 +233,6 @@ LoudnessDialog::LoudnessDialog (Session* s, AudioRange const& ar, bool as)
 	t->attach (_gain_out_label,    3, 4, ROW); ++row;
 	t->attach (_gain_exceeds_label, 2, 3, ROW);
 	t->attach (_gain_total_label,   3, 4, ROW); ++row;
-	t->attach (_custom_pos_button,  1, 4, ROW); ++row;
-
-	set_tooltip (_custom_pos_button,
-		_("<b>When enabled</b> an amplifier processor is used to apply the gain. "
-		  "This allows for custom positioning of the gain-stage in the master-bus' signal flow, "
-		  "potentially followed by a limiter to conform to both loudness and peak requirements. "
-		  "Depending on limiter settings or DSP after the gain-stage, repeat loudness measurements may produce different results.\n"
-		  "<b>When disabled</b>, the gain is applied directly to the output of the master-bus. This results in an efficient and reliable volume adjustment."
-		 ));
 
 	_dbfs_label.set_alignment (ALIGN_RIGHT);
 	_dbtp_label.set_alignment (ALIGN_RIGHT);
@@ -403,7 +389,6 @@ LoudnessDialog::run ()
 
 	if (r == RESPONSE_APPLY) {
 		_session->master_volume ()->set_value (dB_to_coefficient (gain_db ()), PBD::Controllable::NoGroup);
-		_session->master_out()->set_volume_applies_to_output (!_custom_pos_button.get_active ());
 
 		_preset.level[0] = _dbfs_spinbutton.get_value();
 		_preset.level[1] = _dbtp_spinbutton.get_value();
