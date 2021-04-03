@@ -23,6 +23,7 @@
 #include "pbd/unwind.h"
 
 #include "ardour/dB.h"
+#include "ardour/dsp_limiter.h"
 #include "ardour/plugin_manager.h"
 #include "ardour/plugin_insert.h"
 #include "ardour/processor.h"
@@ -91,14 +92,15 @@ LoudnessDialog::LoudnessDialog (Session* s, AudioRange const& ar, bool as)
 	, _lufs_i_btn (_("Integrated Loudness:"), ArdourButton::led_default_elements, true)
 	, _lufs_s_btn (_("Max. Short Loudness:"), ArdourButton::led_default_elements, true)
 	, _lufs_m_btn (_("Max. Momentary Loudness:"), ArdourButton::led_default_elements, true)
+	, _limiter_btn (_("Use\nLimiter"), ArdourButton::led_default_elements, true)
 	, _rt_analysis_button (_("Realtime"), ArdourButton::led_default_elements, true)
 	, _start_analysis_button (_("Analyze"))
 	, _show_report_button (_("Show Graphical Analysis"))
-	, _dbfs_adjustment ( 0.00, -90.00, 0.00, 0.1, 0.2)
-	, _dbtp_adjustment ( -1.0, -90.00, 0.00, 0.1, 0.2)
-	, _lufs_i_adjustment (-23.0, -90.00, 0.00, 0.1, 1.0)
-	, _lufs_s_adjustment (-20.0, -90.00, 0.00, 0.1, 1.0)
-	, _lufs_m_adjustment (-17.0, -90.00, 0.00, 0.1, 1.0)
+	, _dbfs_adjustment ( 0.00, -10.00, 0.00, 0.1, 0.2)
+	, _dbtp_adjustment ( -1.0, -10.00, 0.00, 0.1, 0.2)
+	, _lufs_i_adjustment (-23.0, -90.00, 0.00, 0.5, 1.0)
+	, _lufs_s_adjustment (-20.0, -90.00, 0.00, 0.5, 1.0)
+	, _lufs_m_adjustment (-17.0, -90.00, 0.00, 0.5, 1.0)
 	, _dbfs_spinbutton (_dbfs_adjustment, 0.1, 1)
 	, _dbtp_spinbutton (_dbtp_adjustment, 0.1, 1)
 	, _lufs_i_spinbutton (_lufs_i_adjustment, 0.1, 1)
@@ -119,6 +121,7 @@ LoudnessDialog::LoudnessDialog (Session* s, AudioRange const& ar, bool as)
 	_start_analysis_button.set_name ("generic button");
 	_rt_analysis_button.set_name ("generic button");
 	_show_report_button.set_name ("generic button");
+	_limiter_btn.set_name ("generic button");
 
 	GtkRequisition req = _start_analysis_button.size_request ();
 	_start_analysis_button.set_size_request (-1, req.height * 1.1);
@@ -135,6 +138,7 @@ LoudnessDialog::LoudnessDialog (Session* s, AudioRange const& ar, bool as)
 	_lufs_i_btn.set_led_left (true);
 	_lufs_s_btn.set_led_left (true);
 	_lufs_m_btn.set_led_left (true);
+	_limiter_btn.set_led_left (true);
 
 	_start_analysis_button.set_can_focus (true);
 	_rt_analysis_button.set_can_focus (true);
@@ -144,6 +148,9 @@ LoudnessDialog::LoudnessDialog (Session* s, AudioRange const& ar, bool as)
 	_lufs_i_btn.set_can_focus (true);
 	_lufs_s_btn.set_can_focus (true);
 	_lufs_m_btn.set_can_focus (true);
+	_limiter_btn.set_can_focus (true);
+
+	_limiter_btn.set_active (_session->master_limiter ()->enabled ());
 
 	_dbfs_label.modify_font (UIConfiguration::instance().get_NormalMonospaceFont());
 	_dbtp_label.modify_font (UIConfiguration::instance().get_NormalMonospaceFont());
@@ -167,72 +174,74 @@ LoudnessDialog::LoudnessDialog (Session* s, AudioRange const& ar, bool as)
 
 	int row;
 	Label* l;
-	Table* t = manage (new Table (12, 4, false));
+	Table* t = manage (new Table (12, 5, false));
 	t->set_spacings (4);
 
 	l = manage (new Label (_("<b>Analysis Results</b>"), ALIGN_LEFT));
 	l->set_use_markup (true);
-	t->attach (*l, 0, 1, 0, 1);
+	t->attach (*l, 0, 2, 0, 1);
 	l = manage (new Label (_("Preset:"), ALIGN_LEFT));
-	t->attach (*l, 0, 1, 1, 2);
+	t->attach (*l, 0, 2, 1, 2);
 
-	t->attach (_show_report_button, 1, 4, 0, 1);
-	t->attach (_preset_dropdown,    1, 3, 1, 2);
+	t->attach (_show_report_button, 2, 5, 0, 1);
+	t->attach (_preset_dropdown,    2, 4, 1, 2);
 
 	l = manage (new Label (_("<b>Target</b>"), ALIGN_CENTER));
 	l->set_use_markup (true);
-	t->attach (*l, 1, 2, 2, 3);
+	t->attach (*l, 2, 3, 2, 3);
 	l = manage (new Label (_("<b>Measured</b>"), ALIGN_CENTER));
 	l->set_use_markup (true);
-	t->attach (*l, 2, 3, 2, 3);
+	t->attach (*l, 3, 4, 2, 3);
 	l = manage (new Label (_("<b>Delta</b>"), ALIGN_CENTER));
 	l->set_use_markup (true);
-	t->attach (*l, 3, 4, 2, 3);
+	t->attach (*l, 4, 5, 2, 3);
+
+	t->attach (_limiter_btn, 0, 1, 3, 5);
 
 	row = 3;
-	t->attach (_dbfs_btn,   0, 1, ROW); ++row;
-	t->attach (_dbtp_btn,   0, 1, ROW); ++row;
-	t->attach (_lufs_i_btn, 0, 1, ROW); ++row;
-	t->attach (_lufs_s_btn, 0, 1, ROW); ++row;
-	t->attach (_lufs_m_btn, 0, 1, ROW); ++row;
+	t->attach (_dbfs_btn,   1, 2, ROW); ++row;
+	t->attach (_dbtp_btn,   1, 2, ROW); ++row;
+	t->attach (_lufs_i_btn, 0, 2, ROW); ++row;
+	t->attach (_lufs_s_btn, 0, 2, ROW); ++row;
+	t->attach (_lufs_m_btn, 0, 2, ROW); ++row;
 
 	++row; // spacer
 
 	l = manage (new Label (_("Gain to normalize:"), ALIGN_LEFT));
-	t->attach (*l, 0, 1, ROW); ++row;
+	t->attach (*l, 0, 2, ROW); ++row;
 	l = manage (new Label (_("Previous output gain:"), ALIGN_LEFT));
-	t->attach (*l, 0, 1, ROW); ++row;
+	t->attach (*l, 0, 2, ROW); ++row;
 
 	l = manage (new Label (_("Total gain:"), ALIGN_LEFT));
-	t->attach (*l, 0, 1, ROW); ++row;
+	t->attach (*l, 0, 2, ROW); ++row;
 
 	row = 3;
-	t->attach (_dbfs_spinbutton,    1, 2, ROW, EXPAND|FILL, EXPAND|FILL, 8, 0); ++row;
-	t->attach (_dbtp_spinbutton,    1, 2, ROW, EXPAND|FILL, EXPAND|FILL, 8, 0); ++row;
-	t->attach (_lufs_i_spinbutton,  1, 2, ROW, EXPAND|FILL, EXPAND|FILL, 8, 0); ++row;
-	t->attach (_lufs_s_spinbutton,  1, 2, ROW, EXPAND|FILL, EXPAND|FILL, 8, 0); ++row;
-	t->attach (_lufs_m_spinbutton,  1, 2, ROW, EXPAND|FILL, EXPAND|FILL, 8, 0); ++row;
+	t->attach (_dbfs_spinbutton,    2, 3, ROW, EXPAND|FILL, EXPAND|FILL, 8, 0); ++row;
+	t->attach (_dbtp_spinbutton,    2, 3, ROW, EXPAND|FILL, EXPAND|FILL, 8, 0); ++row;
+	t->attach (_lufs_i_spinbutton,  2, 3, ROW, EXPAND|FILL, EXPAND|FILL, 8, 0); ++row;
+	t->attach (_lufs_s_spinbutton,  2, 3, ROW, EXPAND|FILL, EXPAND|FILL, 8, 0); ++row;
+	t->attach (_lufs_m_spinbutton,  2, 3, ROW, EXPAND|FILL, EXPAND|FILL, 8, 0); ++row;
 
 	row = 3;
-	t->attach (_dbfs_label,         2, 3, ROW); ++row;
-	t->attach (_dbtp_label,         2, 3, ROW); ++row;
-	t->attach (_lufs_i_label,       2, 3, ROW); ++row;
-	t->attach (_lufs_s_label,       2, 3, ROW); ++row;
-	t->attach (_lufs_m_label,       2, 3, ROW); ++row;
+	t->attach (_dbfs_label,         3, 4, ROW); ++row;
+	t->attach (_dbtp_label,         3, 4, ROW); ++row;
+	t->attach (_lufs_i_label,       3, 4, ROW); ++row;
+	t->attach (_lufs_s_label,       3, 4, ROW); ++row;
+	t->attach (_lufs_m_label,       3, 4, ROW); ++row;
 
 	row = 3;
-	t->attach (_delta_dbfs_label,   3, 4, ROW); ++row;
-	t->attach (_delta_dbtp_label,   3, 4, ROW); ++row;
-	t->attach (_delta_lufs_i_label, 3, 4, ROW); ++row;
-	t->attach (_delta_lufs_s_label, 3, 4, ROW); ++row;
-	t->attach (_delta_lufs_m_label, 3, 4, ROW); ++row;
+	t->attach (_delta_dbfs_label,   4, 5, ROW); ++row;
+	t->attach (_delta_dbtp_label,   4, 5, ROW); ++row;
+	t->attach (_delta_lufs_i_label, 4, 5, ROW); ++row;
+	t->attach (_delta_lufs_s_label, 4, 5, ROW); ++row;
+	t->attach (_delta_lufs_m_label, 4, 5, ROW); ++row;
 
 	ArdourHSpacer* spc = manage (new ArdourHSpacer (1.0));
-	t->attach (*spc,                2, 4, ROW); ++row;
-	t->attach (_gain_norm_label,    3, 4, ROW); ++row;
-	t->attach (_gain_out_label,    3, 4, ROW); ++row;
-	t->attach (_gain_exceeds_label, 2, 3, ROW);
-	t->attach (_gain_total_label,   3, 4, ROW); ++row;
+	t->attach (*spc,                3, 5, ROW); ++row;
+	t->attach (_gain_norm_label,    4, 5, ROW); ++row;
+	t->attach (_gain_out_label,     4, 5, ROW); ++row;
+	t->attach (_gain_exceeds_label, 3, 4, ROW);
+	t->attach (_gain_total_label,   4, 5, ROW); ++row;
 
 	_dbfs_label.set_alignment (ALIGN_RIGHT);
 	_dbtp_label.set_alignment (ALIGN_RIGHT);
@@ -331,11 +340,12 @@ LoudnessDialog::LoudnessDialog (Session* s, AudioRange const& ar, bool as)
 	_lufs_m_spinbutton.signal_value_changed().connect (mem_fun (*this, &LoudnessDialog::update_settings));
 	_show_report_button.signal_clicked.connect (mem_fun (*this, &LoudnessDialog::display_report));
 	_start_analysis_button.signal_clicked.connect (mem_fun (*this, &LoudnessDialog::start_analysis));
-	_dbfs_btn.signal_clicked.connect (mem_fun (*this, &LoudnessDialog::update_settings));
-	_dbtp_btn.signal_clicked.connect (mem_fun (*this, &LoudnessDialog::update_settings));
+	_dbfs_btn.signal_clicked.connect (sigc::bind (mem_fun (*this, &LoudnessDialog::peak_radio), false));
+	_dbtp_btn.signal_clicked.connect (sigc::bind (mem_fun (*this, &LoudnessDialog::peak_radio), true));
 	_lufs_i_btn.signal_clicked.connect (mem_fun (*this, &LoudnessDialog::update_settings));
 	_lufs_s_btn.signal_clicked.connect (mem_fun (*this, &LoudnessDialog::update_settings));
 	_lufs_m_btn.signal_clicked.connect (mem_fun (*this, &LoudnessDialog::update_settings));
+	_limiter_btn.signal_clicked.connect (mem_fun (*this, &LoudnessDialog::update_settings));
 	_conformity_expander.property_expanded().signal_changed().connect( sigc::mem_fun(*this, &LoudnessDialog::toggle_conformity_display));
 
 	_ok_button->set_sensitive (false);
@@ -390,6 +400,20 @@ LoudnessDialog::run ()
 	if (r == RESPONSE_APPLY) {
 		_session->master_volume ()->set_value (dB_to_coefficient (gain_db ()), PBD::Controllable::NoGroup);
 
+		if (_dbtp_btn.get_active ()) {
+			_session->master_limiter ()->threshold_ctrl ()->set_value (_dbtp_spinbutton.get_value(), PBD::Controllable::NoGroup);
+			_session->master_limiter ()->truepeak_ctrl ()->set_value (1, PBD::Controllable::NoGroup);
+			_session->master_limiter ()->enable (_limiter_btn.get_active ());
+		} else if (_dbfs_btn.get_active ()) {
+			_session->master_limiter ()->threshold_ctrl ()->set_value (_dbfs_spinbutton.get_value(), PBD::Controllable::NoGroup);
+			_session->master_limiter ()->truepeak_ctrl ()->set_value (0, PBD::Controllable::NoGroup);
+			_session->master_limiter ()->enable (_limiter_btn.get_active ());
+		} else {
+			_session->master_limiter ()->enable (false);
+			_session->master_limiter ()->threshold_ctrl ()->set_value (0, PBD::Controllable::NoGroup);
+			_session->master_limiter ()->truepeak_ctrl ()->set_value (0, PBD::Controllable::NoGroup);
+		}
+
 		_preset.level[0] = _dbfs_spinbutton.get_value();
 		_preset.level[1] = _dbtp_spinbutton.get_value();
 		_preset.level[2] = _lufs_i_spinbutton.get_value();
@@ -426,6 +450,11 @@ LoudnessDialog::analyze ()
 	assert (_session->master_out()->output());
 	assert (_session->master_out()->output()->n_ports().n_audio() == 2);
 	assert (_range.start < _range.end);
+
+	/* disable master-limiter */
+	bool session_was_dirty = _session->dirty ();
+	bool limiter_was_enabled = _session->master_limiter ()->enabled ();
+	_session->master_limiter ()->enable (false);
 
 	ExportTimespanPtr tsp = _session->get_export_handler()->add_timespan();
 
@@ -487,6 +516,10 @@ LoudnessDialog::analyze ()
 
 	/* done */
   _status->finish (TRS_UI);
+	_session->master_limiter ()->enable (limiter_was_enabled);
+	if (_session->dirty () && !session_was_dirty) {
+		_session->unset_dirty ();
+	}
 
 	if (!_status->aborted() && _status->result_map.size () != 1) {
 		ArdourMessageDialog (_("Loudness measurement returned no results. Likely because the analyzed range is to short."), false, MESSAGE_ERROR).run ();
@@ -521,6 +554,10 @@ LoudnessDialog::apply_preset ()
 	PBD::Unwinder<bool> uw (_ignore_change, true);
 	_preset_dropdown.set_text (_preset.name);
 
+	if (_preset.enable[0] && _preset.enable[1]) {
+		_limiter_btn.set_active (false);
+	}
+
 	_dbfs_btn.set_active (_preset.enable[0]);
 	_dbtp_btn.set_active (_preset.enable[1]);
 	_lufs_i_btn.set_active (_preset.enable[2]);
@@ -545,6 +582,24 @@ LoudnessDialog::update_sensitivity ()
 }
 
 void
+LoudnessDialog::peak_radio (bool tp)
+{
+	if (_ignore_change) {
+		return;
+	}
+	if (_limiter_btn.get_active ()) {
+		if (tp && _dbfs_btn.get_active ()) {
+			PBD::Unwinder<bool> uw (_ignore_change, true);
+			_dbfs_btn.set_active (false);
+		} else if (!tp && _dbtp_btn.get_active ()) {
+			PBD::Unwinder<bool> uw (_ignore_change, true);
+			_dbtp_btn.set_active (false);
+		}
+	}
+	update_settings ();
+}
+
+void
 LoudnessDialog::update_settings ()
 {
 	if (_ignore_change) {
@@ -552,6 +607,11 @@ LoudnessDialog::update_settings ()
 	}
 	_preset.name = _("Custom");
 	_preset_dropdown.set_text (_preset.name);
+
+	if (_dbfs_btn.get_active () && _dbtp_btn.get_active () && _limiter_btn.get_active ()) {
+		PBD::Unwinder<bool> uw (_ignore_change, true);
+		_dbfs_btn.set_active (false);
+	}
 
 	update_sensitivity ();
 	calculate_gain ();
@@ -616,11 +676,13 @@ LoudnessDialog::calculate_gain ()
 #define MIN_IF_SET(A, B) \
 	{ if (set) { gain = std::min (gain, (A) - (B));} else { gain = (A) - (B); } set = true; }
 
-	if (_dbfs_btn.get_active () && _dbfs_btn.sensitive ()) {
-		MIN_IF_SET (dbfs, _dbfs);
-	}
-	if (_dbtp_btn.get_active () && _dbtp_btn.sensitive ()) {
-		MIN_IF_SET (dbtp, _dbtp);
+	if (!_limiter_btn.get_active ()) {
+		if (_dbfs_btn.get_active () && _dbfs_btn.sensitive ()) {
+			MIN_IF_SET (dbfs, _dbfs);
+		}
+		if (_dbtp_btn.get_active () && _dbtp_btn.sensitive ()) {
+			MIN_IF_SET (dbtp, _dbtp);
+		}
 	}
 	if (_lufs_i_btn.get_active () && _lufs_i_btn.sensitive ()) {
 		MIN_IF_SET (lufs_i, _lufs_i);
@@ -638,8 +700,8 @@ LoudnessDialog::calculate_gain ()
 	_delta_lufs_s_label.set_text (string_compose (_("%1 LU"), std::setprecision (2), std::showpos, std::fixed, lufs_s - _lufs_s));
 	_delta_lufs_m_label.set_text (string_compose (_("%1 LU"), std::setprecision (2), std::showpos, std::fixed, lufs_m - _lufs_m));
 
-	_delta_dbfs_label.set_sensitive (_dbfs_btn.get_active ());
-	_delta_dbtp_label.set_sensitive (_dbtp_btn.get_active ());
+	_delta_dbfs_label.set_sensitive (_dbfs_btn.get_active () && !_limiter_btn.get_active ());
+	_delta_dbtp_label.set_sensitive (_dbtp_btn.get_active () && !_limiter_btn.get_active ());
 	_delta_lufs_i_label.set_sensitive (_lufs_i_btn.get_active ());
 	_delta_lufs_s_label.set_sensitive (_lufs_s_btn.get_active ());
 	_delta_lufs_m_label.set_sensitive (_lufs_m_btn.get_active ());
@@ -686,9 +748,23 @@ LoudnessDialog::test_conformity ()
 		_conformity_expander.remove ();
 	}
 
-	const float dbfs = rintf ((_dbfs + _gain_norm) * 10.f) / 10.f;
-	const float dbtp = rintf ((_dbtp + _gain_norm) * 10.f) / 10.f;
 	const float lufs_i = rintf ((_lufs_i + _gain_norm) * 10.f) / 10.f;
+	float dbfs = _dbfs + _gain_norm;
+	float dbtp = _dbtp + _gain_norm;
+
+	if (_limiter_btn.get_active ()) {
+		if (_dbtp_btn.get_active ()) {
+			dbfs -= std::max<float> (0, dbtp - _dbtp_spinbutton.get_value());
+			dbtp = std::min<float> (dbtp, _dbtp_spinbutton.get_value());
+			dbfs = std::min<float> (dbfs, _dbtp_spinbutton.get_value());
+		} else if (_dbfs_btn.get_active ()) {
+			/* offset true peak by FS gain reduction */
+			dbtp -= std::max<float> (0, dbfs - _dbfs_spinbutton.get_value());
+			dbfs = std::min<float> (dbfs, _dbfs_spinbutton.get_value());
+		}
+	}
+	dbfs = rintf (dbfs * 10.f) / 10.f;
+	dbtp = rintf (dbtp * 10.f) / 10.f;
 
 	Table* t = manage (new Table ());
 	size_t n_pset = sizeof (presets) / sizeof (LoudnessDialog::LoudnessPreset);

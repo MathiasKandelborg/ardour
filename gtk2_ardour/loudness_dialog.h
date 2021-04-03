@@ -59,6 +59,7 @@ private:
 
 	void load_preset (size_t);
 	void apply_preset ();
+	void peak_radio (bool);
 	void update_settings ();
 	void update_sensitivity ();
 
@@ -94,6 +95,7 @@ private:
 	ArdourWidgets::ArdourButton _lufs_i_btn;
 	ArdourWidgets::ArdourButton _lufs_s_btn;
 	ArdourWidgets::ArdourButton _lufs_m_btn;
+	ArdourWidgets::ArdourButton _limiter_btn;
 
 	Gtk::Label       _dbfs_label;
 	Gtk::Label       _dbtp_label;
