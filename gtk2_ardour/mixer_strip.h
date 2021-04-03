@@ -193,6 +193,7 @@ private:
 	Gtk::Table solo_iso_table;
 	Gtk::Table mute_solo_table;
 	Gtk::Table master_volume_table;
+	Gtk::VBox  master_limiter_vbox;
 	Gtk::Table bottom_button_table;
 
 	void vca_assign (boost::shared_ptr<ARDOUR::VCA>);
@@ -229,7 +230,12 @@ private:
 	ArdourWidgets::ArdourKnob   trim_control;
 
 	ArdourWidgets::ArdourButton* _loudess_analysis_button;
+	ArdourWidgets::ArdourButton* _loudess_limiter_button;
+	ArdourWidgets::FastMeter*    _lm_redux_meter;
 	boost::shared_ptr<AutomationController> _volume_controller;
+	boost::shared_ptr<AutomationController> _lm_threshold_controller;
+	boost::shared_ptr<AutomationController> _lm_release_controller;
+	boost::shared_ptr<AutomationController> _lm_truepeak_controller;
 
 	void trim_start_touch ();
 	void trim_end_touch ();
@@ -237,6 +243,8 @@ private:
 	void setup_comment_button ();
 
 	void loudess_analysis_button_clicked ();
+	void limiter_active_changed (boost::weak_ptr<ARDOUR::Processor>);
+	bool limter_button_release (GdkEventButton*, boost::weak_ptr<ARDOUR::Processor>);
 
 	ArdourWidgets::ArdourButton group_button;
 	RouteGroupMenu*             group_menu;
