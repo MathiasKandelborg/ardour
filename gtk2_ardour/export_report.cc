@@ -297,7 +297,15 @@ ExportReport::init (const AnalysisResults & ar, bool with_file)
 				ann_h += 4 + 3 * linesp; /* File Info */;
 			}
 
-			const int png_h = hh + 4 + p->n_channels * (2 * waveh2 + 4) + ann_h + specth + 4 + loudnh + 4;
+			int png_h = hh + 4 + p->n_channels * (2 * waveh2 + 4) + ann_h + specth + 4;
+
+			if (p->have_loudness && p->have_dbtp && p->have_lufs_graph && sample_rate > 0) {
+				png_h += loudnh + 4;
+			}
+			if (p->have_loudness && p->have_dbtp && p->integrated_loudness > -180) {
+				png_h += lin[0] * 4 + 4;
+			}
+
 			png_w = std::max (std::max (top_w, wav_w), spc_w);
 
 			png_surface = Cairo::ImageSurface::create (Cairo::FORMAT_RGB24, png_w, png_h);
@@ -628,6 +636,103 @@ ExportReport::init (const AnalysisResults & ar, bool with_file)
 				pcx->set_source (las, 0, png_y0);
 				pcx->paint ();
 				png_y0 += las->get_height() + 4;
+			}
+		}
+
+		if (p->have_loudness && p->have_dbtp && p->integrated_loudness > -180) {
+
+			struct LoudnessConstraint
+			{
+				std::string name;
+				bool        enable[2];
+				float       peak[2];
+				float       lufs[2];
+			};
+
+			LoudnessConstraint lc[] = {
+				{"CD/DVD",           { true,  true},  {  0, -0.1}, {  0.0, -200.0}},
+				{"EBU R128",         { false, true},  {  0, -1.0}, {-22.5,  -23.5}}, // +/- 0.5 LU
+				{"AES Streaming",    { false, true},  {  0, -1.0}, {-16.0,  -20.0}}, // min/max Integrated: -20 / -16 LUFS - same as "ASWG-R001 PORTABLE"
+				{"Amazon Music",     { false, true},  {  0, -2.0}, { -9.0,  -19.0}}, // -9 to -19 LUFS
+				{"Apple Music",      { false, true},  {  0, -1.0}, {-15.0,  -17.0}}, // (+/- 1.0 LU)
+				{"Deezer",           { false, true},  {  0, -1.0}, {-14.0,  -16.0}}, // -14 to -16 LUFS
+				{"Soundcloud",       { false, true},  {  0, -1.0}, { -8.0,  -13.0}}, // -8 to -13 LUFS
+				{"Spotify",          { false, true},  {  0, -1.0}, { -8.0,  -20.0}}, // Spotify use replay-gain to match -14 or -11 ..
+				{"Spotify Loud",     { false, true},  {  0, -2.0}, { -5.0,  -17.0}}, // .. so the min/max range is arbitrary +/- 6dB
+				{"Youtube",          { false, true},  {  0, -1.0}, {-13.0,  -15.0}}, // -13 to -15 LUFS
+			};
+
+			const float lufs = rint (p->integrated_loudness * 10.f) / 10.f;
+			const float dbfs = rint (accurate_coefficient_to_dB (p->peak) * 10.f) / 10.f;
+			const float dbtp = rint (accurate_coefficient_to_dB (p->truepeak) * 10.f) / 10.f;
+
+			int cw = 800 + m_l;
+			int ch = 3.25 * lin[0];
+			Cairo::RefPtr<Cairo::ImageSurface> conf = Cairo::ImageSurface::create (Cairo::FORMAT_ARGB32, cw, ch);
+			Cairo::RefPtr<Cairo::Context> cr = Cairo::Context::create (conf);
+			cr->set_source_rgba (0, 0, 0, 1.0);
+			cr->paint ();
+
+			cr->set_operator (Cairo::OPERATOR_SOURCE);
+			cr->rectangle (0, 0, m_l - 1, ch);
+			cr->set_source_rgba (0, 0, 0, 0);
+			cr->fill ();
+			cr->set_operator (Cairo::OPERATOR_OVER);
+
+			layout->set_font_description (UIConfiguration::instance ().get_SmallerFont ());
+			layout->set_alignment (Pango::ALIGN_RIGHT);
+			cr->set_source_rgba (.9, .9, .9, 1.0);
+			layout->set_text (_("Conformity\nAnalysis"));
+			layout->get_pixel_size (w, h);
+			cr->move_to (rint (m_l - w - 6), rint ((ch - h) * .5));
+			layout->show_in_cairo_context (cr);
+			layout->set_alignment (Pango::ALIGN_LEFT);
+
+			int yl = lin[0] / 2;
+			for (int i = 0; i < 10; ++i) {
+				int xl = m_l + 10 + (i % 5) * (cw - 20) / 5;
+
+				layout->set_font_description (UIConfiguration::instance ().get_SmallFont ());
+				cr->set_source_rgba (.9, .9, .9, 1.0);
+				layout->set_text (lc[i].name);
+				cr->move_to (xl, yl);
+				layout->get_pixel_size (w, h);
+				layout->show_in_cairo_context (cr);
+				cr->move_to (xl + w + 5, yl);
+
+				layout->set_font_description (UIConfiguration::instance ().get_LargeMonospaceFont ());
+				cr->set_source_rgba (.9, .9, .9, 1.0);
+				if (lufs > lc[i].lufs[0]
+						|| (lc[i].enable[0] && dbfs > lc[i].peak[0])
+						|| (lc[i].enable[1] && dbtp > lc[i].peak[1])
+					 ) {
+					cr->set_source_rgba (1, 0, .0, 1.0);
+					layout->set_text ("\u274C"); // cross mark
+				} else if (lufs < lc[i].lufs[1]) {
+					cr->set_source_rgba (.6, .7, 0, 1.0);
+					layout->set_text ("\u2714\u26A0"); // warning sign
+				} else {
+					cr->set_source_rgba (.1, 1, .1, 1.0);
+					layout->set_text ("\u2714"); // heavy check mark
+				}
+				int ww, hh;
+				layout->get_pixel_size (ww, hh);
+				cr->move_to (xl + w + 4, yl - (hh - h) * .5);
+				layout->show_in_cairo_context (cr);
+
+				if (i % 5 == 4) {
+					yl += lin[0] * 1.3;
+				}
+			}
+			CimgArea *ci = manage (new CimgArea (conf));
+			wtbl->attach (*ci, 0, 1, wrow, wrow + 1, SHRINK, SHRINK);
+			++wrow;
+
+			if (png_surface) {
+				Cairo::RefPtr<Cairo::Context> pcx = Cairo::Context::create (png_surface);
+				pcx->set_source (conf, 0, png_y0);
+				pcx->paint ();
+				png_y0 += conf->get_height() + 4;
 			}
 		}
 
